@@ -1,4 +1,4 @@
-// Código responsável pelas buscas em Largura e em Profundidade, executadas um passo por vez para poder ser animadas
+// Código responsável pelas estratégias de busca, executadas um passo por vez para poderem ser animadas
 
 // Marcações desenhadas por cima da célula sem cobrir o terreno: cada uma sabe se desenhar em (x, y, size).
 const SEARCH_MARKS = {
@@ -34,14 +34,19 @@ const SEARCH_MARKS = {
   }
 };
 
-class BreadthFirstSearch {
+// Distância de Manhattan escalada pelo menor custo de terreno, o que a mantém admissível e consistente.
+function manhattan(a, b) {
+  return (Math.abs(a.col - b.col) + Math.abs(a.row - b.row)) * TERRAIN.LOW.cost;
+}
+
+// Base comum: guarda o estado da busca, reconstrói o caminho e desenha as marcações.
+class GridSearch {
   constructor(mapGrid, start, goal) {
     this.mapGrid = mapGrid;
     this.start = start;
     this.goal = goal;
 
-    this.frontier = [start];
-    this.visited = new Set([start]);
+    this.closed = new Set();
     this.expanded = [];
     this.cameFrom = new Map();
     this.current = null;
@@ -50,38 +55,41 @@ class BreadthFirstSearch {
     this.path = [];
   }
 
-  // Velocidade da animação, em nós expandidos por frame.
-  get stepsPerFrame() {
-    return 1.8;
+  get name() {
+    return "";
   }
 
-  // Expande um único nó da fronteira.
-  step() {
-    if (this.done) return;
+  // Células guardadas na estrutura da fronteira (podem ter repetidas ou já expandidas).
+  frontierCells() {
+    return [];
+  }
 
-    if (this.frontier.length === 0) {
-      this.current = null;
-      this.done = true;
-      return;
+  // Fronteira real: células únicas ainda não expandidas.
+  visibleFrontier() {
+    let seen = new Set();
+    for (let cell of this.frontierCells()) {
+      if (!this.closed.has(cell)) seen.add(cell);
     }
+    return [...seen];
+  }
 
-    this.current = this.frontier.shift();
-    this.expanded.push(this.current);
+  expand(cell) {
+    this.current = cell;
+    this.closed.add(cell);
+    this.expanded.push(cell);
 
-    if (this.current === this.goal) {
+    if (cell === this.goal) {
       this.path = this.buildPath();
       this.found = true;
       this.done = true;
-      return;
+      return true;
     }
+    return false;
+  }
 
-    for (let next of this.mapGrid.neighbors(this.current.col, this.current.row)) {
-      if (!this.visited.has(next)) {
-        this.visited.add(next);
-        this.cameFrom.set(next, this.current);
-        this.frontier.push(next);
-      }
-    }
+  fail() {
+    this.current = null;
+    this.done = true;
   }
 
   buildPath() {
@@ -95,12 +103,21 @@ class BreadthFirstSearch {
     return path.reverse();
   }
 
+  // Custo de entrar em cada célula do caminho (a célula inicial não é paga).
+  pathCost() {
+    let cost = 0;
+    for (let i = 1; i < this.path.length; i++) {
+      cost += this.path[i].terrain.cost;
+    }
+    return cost;
+  }
+
   show(cellSize) {
     for (let cell of this.expanded) {
       SEARCH_MARKS.VISITED.draw(cell.col * cellSize, cell.row * cellSize, cellSize);
     }
 
-    for (let cell of this.frontier) {
+    for (let cell of this.visibleFrontier()) {
       SEARCH_MARKS.FRONTIER.draw(cell.col * cellSize, cell.row * cellSize, cellSize);
     }
 
@@ -117,10 +134,50 @@ class BreadthFirstSearch {
   }
 }
 
-// Reaproveita construtor, caminho e desenho da Largura; só muda a fronteira, que vira uma pilha.
-class DepthFirstSearch extends BreadthFirstSearch {
-  get stepsPerFrame() {
-    return 0.0008;
+class BreadthFirstSearch extends GridSearch {
+  constructor(mapGrid, start, goal) {
+    super(mapGrid, start, goal);
+    this.frontier = [start];
+    this.discovered = new Set([start]);
+  }
+
+  get name() {
+    return "Largura (BFS)";
+  }
+
+  frontierCells() {
+    return this.frontier;
+  }
+
+  // Expande o nó mais antigo da fila.
+  step() {
+    if (this.done) return;
+    if (this.frontier.length === 0) return this.fail();
+
+    if (this.expand(this.frontier.shift())) return;
+
+    for (let next of this.mapGrid.neighbors(this.current.col, this.current.row)) {
+      if (!this.discovered.has(next)) {
+        this.discovered.add(next);
+        this.cameFrom.set(next, this.current);
+        this.frontier.push(next);
+      }
+    }
+  }
+}
+
+class DepthFirstSearch extends GridSearch {
+  constructor(mapGrid, start, goal) {
+    super(mapGrid, start, goal);
+    this.frontier = [start];
+  }
+
+  get name() {
+    return "Profundidade (DFS)";
+  }
+
+  frontierCells() {
+    return this.frontier;
   }
 
   // Expande o nó empilhado por último.
@@ -128,32 +185,106 @@ class DepthFirstSearch extends BreadthFirstSearch {
     if (this.done) return;
 
     // A mesma célula pode ter sido empilhada por mais de um vizinho; descarta as já expandidas.
-    this.current = this.frontier.pop();
-    while (this.current && this.visited.has(this.current) && this.current !== this.start) {
-      this.current = this.frontier.pop();
+    let cell = this.frontier.pop();
+    while (cell && this.closed.has(cell)) {
+      cell = this.frontier.pop();
     }
+    if (!cell) return this.fail();
 
-    if (!this.current) {
-      this.current = null;
-      this.done = true;
-      return;
-    }
-
-    this.visited.add(this.current);
-    this.expanded.push(this.current);
-
-    if (this.current === this.goal) {
-      this.path = this.buildPath();
-      this.found = true;
-      this.done = true;
-      return;
-    }
+    if (this.expand(cell)) return;
 
     for (let next of this.mapGrid.neighbors(this.current.col, this.current.row)) {
-      if (!this.visited.has(next)) {
+      if (!this.closed.has(next)) {
         this.cameFrom.set(next, this.current);
         this.frontier.push(next);
       }
     }
+  }
+}
+
+// Base das buscas com fila de prioridade; as subclasses só mudam a prioridade de cada nó.
+class BestFirstSearch extends GridSearch {
+  constructor(mapGrid, start, goal) {
+    super(mapGrid, start, goal);
+    this.costSoFar = new Map([[start, 0]]);
+    this.frontier = new MinHeap();
+    this.push(start, 0);
+  }
+
+  // Se false, um nó já descoberto não é reinserido mesmo que se ache um caminho mais barato até ele.
+  get updatesCost() {
+    return true;
+  }
+
+  priority(cell, g) {
+    return g;
+  }
+
+  heuristic(cell) {
+    return manhattan(cell, this.goal);
+  }
+
+  push(cell, g) {
+    this.frontier.push(cell, this.priority(cell, g), this.heuristic(cell));
+  }
+
+  frontierCells() {
+    return this.frontier.values();
+  }
+
+  // Expande o nó de menor prioridade; entradas antigas de nós já expandidos são descartadas.
+  step() {
+    if (this.done) return;
+
+    let cell = this.frontier.pop();
+    while (cell && this.closed.has(cell)) {
+      cell = this.frontier.pop();
+    }
+    if (!cell) return this.fail();
+
+    if (this.expand(cell)) return;
+
+    let g = this.costSoFar.get(this.current);
+    for (let next of this.mapGrid.neighbors(this.current.col, this.current.row)) {
+      if (this.closed.has(next)) continue;
+
+      let newG = g + next.terrain.cost;
+      let known = this.costSoFar.has(next);
+      if (!known || (this.updatesCost && newG < this.costSoFar.get(next))) {
+        this.costSoFar.set(next, newG);
+        this.cameFrom.set(next, this.current);
+        this.push(next, newG);
+      }
+    }
+  }
+}
+
+class UniformCostSearch extends BestFirstSearch {
+  get name() {
+    return "Custo Uniforme";
+  }
+}
+
+class GreedySearch extends BestFirstSearch {
+  get name() {
+    return "Gulosa";
+  }
+
+  get updatesCost() {
+    return false;
+  }
+
+  priority(cell, g) {
+    return this.heuristic(cell);
+  }
+}
+
+class AStarSearch extends BestFirstSearch {
+  get name() {
+    return "A*";
+  }
+
+  priority(cell, g) {
+    return g + this.heuristic(cell);
   }
 }

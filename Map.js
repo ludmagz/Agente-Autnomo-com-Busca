@@ -1,10 +1,11 @@
 // Código que concentra os tipos de terreno, a geração por ruído e a renderização do mapa e legenda.
 
+// speed: fração de célula que o agente percorre por frame sobre aquele terreno.
 const TERRAIN = {
-  LOW:      { id: 0, name: "Custo Baixo (Areia)", cost: 1,   color: "#E2F0D9" },
-  MEDIUM:   { id: 1, name: "Custo Médio (Atoleiro)", cost: 5,  color: "#C65911" },
-  HIGH:     { id: 2, name: "Custo Alto (Água)", cost: 10,  color: "#5B9BD5" },
-  OBSTACLE: { id: 3, name: "Obstáculo", cost: Infinity, color: "#7F7F7F" }
+  LOW:      { id: 0, name: "Custo Baixo (Areia)", cost: 1,   speed: 0.12,  color: "#E2F0D9" },
+  MEDIUM:   { id: 1, name: "Custo Médio (Atoleiro)", cost: 5,  speed: 0.045, color: "#C65911" },
+  HIGH:     { id: 2, name: "Custo Alto (Água)", cost: 10,  speed: 0.02,  color: "#5B9BD5" },
+  OBSTACLE: { id: 3, name: "Obstáculo", cost: Infinity, speed: 0, color: "#7F7F7F" }
 };
 
 class MapGrid {
@@ -132,10 +133,5 @@ class MapGrid {
       noStroke();
       text(mark.name, x + 24, marksY + 8);
     });
-
-    fill(100);
-    textSize(10);
-    textAlign(RIGHT, CENTER);
-    text("[B] Largura   |   [D] Profundidade   |   [ESPAÇO] ou [R] novo mapa", width - 10, marksY + 8);
   }
 }
