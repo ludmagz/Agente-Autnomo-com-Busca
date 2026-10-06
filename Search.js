@@ -284,6 +284,15 @@ class AStarSearch extends BestFirstSearch {
     return "A*";
   }
 
+  heuristic(cell) {
+    let d = Math.abs(cell.col - this.goal.col)
+          + Math.abs(cell.row - this.goal.row);
+
+    if (d === 0) return 0;
+
+    return (d - 1) * TERRAIN.LOW.cost + this.goal.terrain.cost;
+  }
+
   priority(cell, g) {
     return g + this.heuristic(cell);
   }

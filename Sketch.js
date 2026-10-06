@@ -1,12 +1,12 @@
-// Código do orquestrador principal: ciclo escolha -> busca -> movimento -> coleta -> nova comida
+// Escolha -> busca -> movimento -> pausa.
+// Novas buscas usam o mesmo mapa, ponto inicial e comida.
 
 const COLS = 32;
 const ROWS = 20;
 const CELL_SIZE = 25;
 const HUD_HEIGHT = 120;
 
-// Nós expandidos por frame; [+]/[-] trocam o nível.
-const SEARCH_SPEEDS = [0.25, 0.5, 1, 2, 4, 8, 16];
+const SEARCH_SPEED = 2;
 
 const SEARCH_KEYS = {
   "1": BreadthFirstSearch, "b": BreadthFirstSearch,
@@ -25,13 +25,13 @@ const STATE = {
 
 let mapGrid;
 let agent = null;
+let agentStart = null;
 let food = null;
 let search = null;
 let selectedSearch = null;
 let state = STATE.WAITING;
 let foodCount = 0;
 let stepBudget = 0;
-let speedIndex = 3;
 let paused = false;
 
 function setup() {
@@ -44,7 +44,6 @@ function draw() {
   background(255);
   mapGrid.show();
 
-  // Pausado, nada avança: a busca e o agente ficam congelados no frame atual.
   if (!paused) updateWorld();
 
   if (search) search.show(CELL_SIZE);
@@ -60,8 +59,17 @@ function draw() {
 
 function updateWorld() {
   if (state === STATE.SEARCHING) {
-    // Velocidades fracionárias: acumula a cada frame e executa só os passos inteiros.
-    stepBudget += SEARCH_SPEEDS[speedIndex];
+    let factor = 1;
+    if(search instanceof DepthFirstSearch){
+      factor = 0.4;
+    }
+    if(search instanceof GreedySearch){
+      factor = 0.1;
+    }
+    
+
+    stepBudget += SEARCH_SPEED * factor;
+
     while (stepBudget >= 1 && !search.done) {
       search.step();
       stepBudget--;
@@ -83,19 +91,24 @@ function updateWorld() {
   }
 }
 
-// Passo 1: mapa novo e nada sobre ele até o usuário escolher a busca.
 function resetWorld() {
   agent = null;
+  agentStart = null;
   food = null;
   search = null;
   selectedSearch = null;
   foodCount = 0;
+  stepBudget = 0;
   paused = false;
   state = STATE.WAITING;
+
+  spawnAgent();
+  spawnFood();
 }
 
 function spawnAgent() {
   let cell = mapGrid.randomFreeCell();
+  agentStart = { col: cell.col, row: cell.row };
   agent = new Agent(cell.col, cell.row, CELL_SIZE);
 }
 
@@ -109,10 +122,15 @@ function spawnFood() {
 
 function startSearch(SearchType) {
   selectedSearch = SearchType;
+
   if (!agent) {
     spawnAgent();
     spawnFood();
+  } else {
+    // Reinicia o agente no mesmo ponto inicial, mantendo mapa e comida.
+    agent = new Agent(agentStart.col, agentStart.row, CELL_SIZE);
   }
+
   agent.stop();
 
   let start = mapGrid.grid[agent.row][agent.col];
@@ -123,11 +141,10 @@ function startSearch(SearchType) {
   state = STATE.SEARCHING;
 }
 
-// Passos 9 e 10: contabiliza, gera outra comida e busca de novo a partir da posição atual.
 function collectFood() {
   foodCount++;
-  spawnFood();
-  startSearch(selectedSearch);
+  paused = true;
+  state = STATE.WAITING;
 }
 
 function drawHud() {
@@ -150,7 +167,6 @@ function drawHud() {
       info.push(`Caminho: ${search.path.length - 1} passos, custo ${search.pathCost()}`);
     }
   }
-  info.push(`Velocidade: ${SEARCH_SPEEDS[speedIndex]} nós/frame`);
 
   textSize(11);
   text(info.join("   |   "), 10, top + 76);
@@ -159,7 +175,7 @@ function drawHud() {
   textSize(10);
   text(
     "[1/B] Largura  [2/D] Profundidade  [3/U] Custo Uniforme  [4/G] Gulosa  [5/A] A*" +
-      "  |  [P] pausar  |  [+/-] velocidade  |  [ESPAÇO/R] novo mapa",
+      "  |  [P] pausar  |  [ESPAÇO/R] novo mapa",
     10,
     top + 100
   );
@@ -195,10 +211,13 @@ function showChoicePrompt() {
 }
 
 function showNoPathWarning() {
-  showMessageBox("Comida inalcançável", "Pressione [ESPAÇO] ou [R] para gerar um novo mapa", "#E00000");
+  showMessageBox(
+    "Comida inalcançável",
+    "Pressione [ESPAÇO] ou [R] para gerar um novo mapa",
+    "#E00000"
+  );
 }
 
-// Selo no canto superior direito do mapa enquanto a execução está parada.
 function showPausedBadge() {
   let w = 150;
   let h = 32;
@@ -222,24 +241,16 @@ function showPausedBadge() {
 function keyPressed() {
   let k = key.toLowerCase();
 
+  // O mapa só muda quando esse comando é pressionado.
   if (k === " " || k === "r") {
     mapGrid.generateMap();
     resetWorld();
     return;
   }
 
-  // Só faz sentido pausar depois que a execução começou.
   if (k === "p" && state !== STATE.WAITING) {
     paused = !paused;
     return;
-  }
-
-  if (k === "+" || k === "=") {
-    speedIndex = Math.min(speedIndex + 1, SEARCH_SPEEDS.length - 1);
-  }
-
-  if (k === "-" || k === "_") {
-    speedIndex = Math.max(speedIndex - 1, 0);
   }
 
   if (SEARCH_KEYS[k]) {

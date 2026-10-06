@@ -38,7 +38,7 @@ class Agent {
     let ty = target.row * this.cellSize + this.cellSize / 2;
 
     let under = mapGrid.grid[Math.floor(this.y / this.cellSize)][Math.floor(this.x / this.cellSize)];
-    let speed = under.terrain.speed * this.cellSize;
+    let speed = 1.5 * under.terrain.speed * this.cellSize;
 
     let dx = tx - this.x;
     let dy = ty - this.y;
